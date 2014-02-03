@@ -1,0 +1,117 @@
+#重构 yande pool 下载
+
+"""模块导入"""
+import os,urllib,urllib.request,sys
+
+"""提示"""
+print("此脚本仅可以下载yande中pool标签下的图片集。")
+
+"""函数模块"""
+def getPage(Url):    #获取网页代码
+    #伪装成浏览器"""
+    headers = ('User-Agent','Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.1) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11')
+    opener = urllib.request.build_opener()
+    opener.addheaders = [headers]
+    urlBytes = opener.open(Url)
+    urlRead = urlBytes.read()
+    urlBytes.close()
+    urlUtf8 = urlRead.decode("utf8")
+    urlList = urlUtf8.split("\n")
+    return urlList
+
+#特殊字符检测筛选
+def strReplace(Name):
+    badStr = '\/:*?"<>|'
+    for Str in Name:
+        if Str in badStr:
+            Name = Name.replace(Str,"")
+    return Name
+
+def poolPage():    #获取主页链接，解析pool名字，单图名/大图链接（字典）
+    lpoolUrl = "https://yande.re/pool/show/"    #pool链接的前半部分
+    poolUrl = lpoolUrl + input("请输入pool链接最后的数字串：https://yande.re/pool/show/")    #获取链接
+    print("#"*70)
+    print("开始解析pool页面代码......")
+    #创建空子页链接列表
+    ID_nameList = []
+    file_urlList = []
+    getPages = getPage(poolUrl)
+    for urlLine in getPages:    #遍历网页代码列表
+        if '<title>' in urlLine:    #获取pool名：如果代码行中含有'<title>'关键字符
+            poolName = urlLine.split('>')[1].split(" |")[0]    #按照'>'分段，在第一段里再按照" |"分段提取pool名
+            poolName = strReplace(poolName)
+        elif '  Post.register_resp' in urlLine:
+            for imagesAttribute in urlLine.split("{"):
+                if ('https:' in imagesAttribute) and (not '"index_page"' in imagesAttribute):
+                    ID,Name,file_url = imagesAttribute.split(",")[0],imagesAttribute.split(",")[1],imagesAttribute.split(",")[10]
+                    ID = ID.split(":")[1]
+                    name = Name.split(":")[1].strip('"')    #获取图片名
+                    name = strReplace(name)    #检查名字
+                    name = name.replace(" ","_")
+                    ID_name = ID + "_" + name    #拼合ID和名字
+                    file_url = file_url.split('"')[3].replace('\\','')    #提取大图链接
+                    ID_nameList.append(ID_name)
+                    file_urlList.append(file_url)
+    return poolName,ID_nameList,file_urlList
+
+def poolFolder(poolName):
+    yandeFile = sys.path[0]    #当前脚本路径
+    while len(yandeFile + "\\" + poolName) > 200:
+        poolName = poolName.split("_")[:-1]    #根据预计路径检测修改预建的文件夹名
+        poolName = "_".join(poolName)
+    try:
+        os.mkdir("%s" %(poolName))    #创建图片文件夹
+        print("."*50)
+        print("成功创建了“%s”文件夹！" %(poolName))
+    except:
+        print("."*50)
+        print("无法创建“%s”文件夹，可能已存在！" %(poolName))    #创建文件夹
+    folderPath = os.chdir("%s\%s" %(yandeFile,poolName))    #指定到当前文件夹
+    with open ("Download_Error.log", mode = "w",encoding = "utf-8") as initialize:    #初始化错误文件
+        initialize.write("")
+
+def imagesDown(ID_nameList,file_urlList):
+    newNameList = []
+    ext = file_urlList[0][-4:]
+    DownloadFile = sys.path[0]    #获取当前路径
+    for imagesName in ID_nameList:    #检查路径+文件名是否过长并修改
+        while len(DownloadFile + "\\" + imagesName + ext) > 100:
+            imagesNameList = imagesName.split("_")[:-1]
+            imagesName = "_".join(imagesNameList)
+        newNameList.append(imagesName)
+    imagesNameUrl = dict(zip(file_urlList,newNameList))    #重新导入文件
+    for urlDownload in imagesNameUrl.keys():    #遍历链接
+        ext = urlDownload[-4:]
+        Name = imagesNameUrl[urlDownload]
+        print("开始下载%s%s文件......" % (Name,ext))
+        try:
+            urllib.request.urlretrieve(urlDownload,r"%s%s"%(Name,ext))    #下载图片
+            print("."*50)
+            print("“%s%s”文件下载完成！" %(Name,ext))
+        except:
+            print("."*50)
+            print("“%s%s”文件下载出错！\n错误信息记录在pool文件夹中的Download_Error.log文件里" %(Name,ext))    #出错
+            with open ("Download_Error.log", mode = "a",encoding = "utf-8") as Error:
+                Error.write("%s%s | %s" %(Name,ext,urlDownload))
+                Error.write("\n")
+        print("*"*70)
+
+"""主代码"""
+#获取主页链接，解析pool名字和单图子页链接（元组），数据结构：元组
+print("#"*70)
+poolNameUrl = poolPage()    #pool相册字典
+print("."*50)
+print("pool页面代码解析完成，获得pool名和大图链接！")
+print("#"*70)
+
+#创建pool文件夹，更改下载路径，返回文件夹路径
+print("开始创建 %s 文件夹......" % (poolNameUrl[0]))
+poolFolder(poolNameUrl[0])
+
+#下载命名图片到文件夹
+print("#"*70)
+print("开始下载图片......")
+print("#"*70)
+imagesDown(poolNameUrl[1],poolNameUrl[2])
+print("#"*70)
+print("图片下载完成!")
